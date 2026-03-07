@@ -7,8 +7,8 @@ import buildingsData from '../data/buildings.json'
 import { supabase } from '../lib/supabase'
 import AdminPanel from './AdminPanel'
 
-// OSU North Campus Coordinates
 import { LinearInterpolator } from '@deck.gl/core'
+import BuildingEditorPanel from './BuildingEditorPanel'
 
 // OSU North Campus Coordinates
 const INITIAL_VIEW_STATE = {
@@ -28,6 +28,11 @@ const MapComponent = () => {
     const [boards, setBoards] = useState([])
     const [draggedBoardId, setDraggedBoardId] = useState(null)
     const [clickTarget, setClickTarget] = useState(null) // { x, y, lng, lat }
+    const [isEditingBuildings, setIsEditingBuildings] = useState(false)
+    const [selectedBuildingId, setSelectedBuildingId] = useState(null)
+    const [editingVertices, setEditingVertices] = useState([])
+    const [draggedVertexIndex, setDraggedVertexIndex] = useState(null)
+    const [orbitControllerEnabled, setOrbitControllerEnabled] = useState(true)
 
     // Helper to get color based on density
     const getColor = (count, capacity) => {
@@ -96,15 +101,92 @@ const MapComponent = () => {
         }
     }
 
+    const updateBuildingGeom = async (buildingId, geometry) => {
+        const { error } = await supabase.rpc('update_building_geom', {
+            b_id: buildingId,
+            new_geom: geometry
+        });
+        if (error) {
+            console.error('Error updating building geometry:', error);
+            // Fallback: If RPC 404s, try direct update
+            if (error.code === 'PGRST202' || error.message?.includes('404')) {
+                const { error: updateError } = await supabase
+                    .from('buildings')
+                    .update({ geom: geometry })
+                    .eq('id', buildingId);
+                if (updateError) console.error('Update building fallback failed:', updateError);
+            }
+        }
+    };
+
+    const handleBuildingClick = (info) => {
+        if (!isEditingBuildings) return;
+        if (info.object) {
+            setSelectedBuildingId(info.object.properties.id);
+            // GeoJSON Polygon coordinates are typically [[[lng, lat], [lng, lat], ...]]
+            const coords = info.object.geometry.coordinates[0];
+            setEditingVertices([...coords]);
+        } else {
+            handleCancelEdit();
+        }
+    };
+
+    const handleSaveGeometry = () => {
+        if (!selectedBuildingId || editingVertices.length === 0) return;
+
+        // Ensure polygon describes a closed loop
+        const finalVertices = [...editingVertices];
+        const first = finalVertices[0];
+        const last = finalVertices[finalVertices.length - 1];
+        if (first[0] !== last[0] || first[1] !== last[1]) {
+            finalVertices.push([...first]);
+        }
+
+        const newGeom = {
+            type: "Polygon",
+            coordinates: [finalVertices]
+        };
+
+        updateBuildingGeom(selectedBuildingId, newGeom);
+
+        // Update local state immediately
+        setBuildings(prev => ({
+            ...prev,
+            features: prev.features.map(f =>
+                f.properties.id === selectedBuildingId
+                    ? { ...f, geometry: newGeom }
+                    : f
+            )
+        }));
+
+        handleCancelEdit();
+    };
+
+    const handleCancelEdit = () => {
+        setSelectedBuildingId(null);
+        setEditingVertices([]);
+    };
+
     // Initial Fetch & Real-time Subscription
     useEffect(() => {
         const fetchData = async () => {
-            const { data: bData } = await supabase.from('buildings').select('*')
-            if (bData) {
+            // Try fetching with geometry parsed to GeoJSON
+            const { data: bData, error } = await supabase.rpc('get_buildings_geojson')
+            let finalBuildingData = bData;
+
+            // Fallback if RPC doesn't exist
+            if (error && (error.code === 'PGRST202' || error.message?.includes('404'))) {
+                const { data: fallbackData } = await supabase.from('buildings').select('*');
+                finalBuildingData = fallbackData;
+            }
+
+            if (finalBuildingData) {
                 const updatedFeatures = buildingsData.features.map(feature => {
-                    const building = bData.find(b => b.id === feature.properties.id)
+                    const building = finalBuildingData.find(b => b.id === feature.properties.id)
                     return {
                         ...feature,
+                        // Override geometry ONLY if the DB provides a valid GeoJSON object (from RPC)
+                        geometry: building?.geometry || feature.geometry,
                         properties: {
                             ...feature.properties,
                             current_count: building?.current_count || 0,
@@ -161,9 +243,19 @@ const MapComponent = () => {
                 data: buildings,
                 pickable: true,
                 extruded: true,
-                getFillColor: d => [...(d.properties.color || [150, 150, 150]), 180],
+                getFillColor: d => {
+                    const baseColor = d.properties.color || [150, 150, 150];
+                    if (isEditingBuildings && d.properties.id === selectedBuildingId) {
+                        return [239, 68, 68, 180]; // Highlight selected building
+                    }
+                    return [...baseColor, 180];
+                },
+                getLineColor: [255, 255, 255, 255],
+                getLineWidth: d => (isEditingBuildings && d.properties.id === selectedBuildingId) ? 2 : 0,
+                lineWidthMinPixels: 1,
                 getElevation: d => d.properties.height || 20,
-                transitions: { getFillColor: 600, getElevation: 600 }
+                transitions: { getFillColor: 600, getElevation: 600 },
+                onClick: handleBuildingClick
             })
         ];
 
@@ -184,20 +276,54 @@ const MapComponent = () => {
                     opacity: 0.9,
                     filled: true,
                     stroked: true,
-                    getLineWidth: 2,
                     getLineColor: [255, 255, 255],
+                    parameters: { depthTest: false },
                     updateTriggers: { getRadius: [draggedBoardId] }
                 })
             );
         }
 
+        if (isEditingBuildings && editingVertices.length > 0) {
+            const vertexData = editingVertices.map((coord, index) => ({
+                position: coord,
+                index: index
+            }));
+
+            activeLayers.push(
+                new ScatterplotLayer({
+                    id: 'building-vertices',
+                    data: vertexData,
+                    getPosition: d => d.position,
+                    getFillColor: [255, 255, 255],
+                    getLineColor: [239, 68, 68],
+                    getLineWidth: 2,
+                    getRadius: d => draggedVertexIndex === d.index ? 8 : 4,
+                    radiusUnits: 'pixels',
+                    pickable: true,
+                    stroked: true,
+                    filled: true,
+                    parameters: { depthTest: false },
+                    updateTriggers: {
+                        getPosition: [editingVertices],
+                        getRadius: [draggedVertexIndex]
+                    }
+                })
+            );
+        }
+
         return activeLayers;
-    }, [buildings, boards, draggedBoardId])
+    }, [buildings, boards, draggedBoardId, isEditingBuildings, selectedBuildingId, editingVertices, draggedVertexIndex])
 
     const handleDragStart = (info) => {
-        if (info.object && info.layer.id === 'board-locations') {
+        if (!isEditingBuildings && info.object && info.layer.id === 'board-locations') {
             setDraggedBoardId(info.object.id);
-            return false; // Prevent map panning
+            setOrbitControllerEnabled(false);
+            return false;
+        }
+        if (isEditingBuildings && info.object && info.layer.id === 'building-vertices') {
+            setDraggedVertexIndex(info.object.index);
+            setOrbitControllerEnabled(false);
+            return false;
         }
     };
 
@@ -209,6 +335,18 @@ const MapComponent = () => {
                 location: { ...b.location, coordinates: [lng, lat] }
             } : b));
         }
+        if (draggedVertexIndex !== null && info.coordinate) {
+            setEditingVertices(prev => {
+                const newVertices = [...prev];
+                newVertices[draggedVertexIndex] = info.coordinate;
+
+                // Sync first and last vertex if they represent the same closed loop point
+                if (draggedVertexIndex === 0) newVertices[newVertices.length - 1] = info.coordinate;
+                if (draggedVertexIndex === prev.length - 1) newVertices[0] = info.coordinate;
+
+                return newVertices;
+            });
+        }
     };
 
     const handleDragEnd = (info) => {
@@ -216,6 +354,11 @@ const MapComponent = () => {
             const [lng, lat] = info.coordinate;
             updateBoardCoords(draggedBoardId, lat, lng);
             setDraggedBoardId(null);
+            setOrbitControllerEnabled(true);
+        }
+        if (draggedVertexIndex !== null) {
+            setDraggedVertexIndex(null);
+            setOrbitControllerEnabled(true);
         }
     };
 
@@ -225,7 +368,7 @@ const MapComponent = () => {
                 key="main-deck-gl"
                 viewState={viewState}
                 onViewStateChange={({ viewState }) => setViewState(viewState)}
-                controller={draggedBoardId ? false : true}
+                controller={orbitControllerEnabled}
                 layers={layers}
                 onDragStart={handleDragStart}
                 onDrag={handleDrag}
@@ -274,7 +417,18 @@ const MapComponent = () => {
                 boards={boards}
                 onFlyTo={flyTo}
                 onUpdate={updateBoardCoords}
-            />
+            >
+                <BuildingEditorPanel
+                    isEditingBuildings={isEditingBuildings}
+                    setIsEditingBuildings={(val) => {
+                        setIsEditingBuildings(val);
+                        if (!val) handleCancelEdit();
+                    }}
+                    selectedBuildingId={selectedBuildingId}
+                    onSaveGeometry={handleSaveGeometry}
+                    onCancelEdit={handleCancelEdit}
+                />
+            </AdminPanel>
 
             {(!hasValidKey || apiKeyError) && (
                 <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/80 backdrop-blur-sm p-6 text-center">

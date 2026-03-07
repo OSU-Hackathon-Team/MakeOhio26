@@ -110,9 +110,9 @@ $$;
 -- SEED DATA: Boards (Example coordinates surrounding Scott House)
 INSERT INTO boards (id, name, location)
 VALUES 
-    ('board_north', 'North Node (Scott)', ST_SetSRID(ST_MakePoint(-83.0131, 40.0050), 4326)),
-    ('board_south', 'South Node (Scott)', ST_SetSRID(ST_MakePoint(-83.0131, 40.0042), 4326)),
-    ('board_east', 'East Node (Scott)', ST_SetSRID(ST_MakePoint(-83.0125, 40.0046), 4326))
+    ('board_north', 'North Node', ST_SetSRID(ST_MakePoint(-83.0131, 40.0050), 4326)),
+    ('board_south', 'South Node', ST_SetSRID(ST_MakePoint(-83.0131, 40.0042), 4326)),
+    ('board_east', 'East Node', ST_SetSRID(ST_MakePoint(-83.0125, 40.0046), 4326))
 ON CONFLICT (id) DO UPDATE SET 
     name = EXCLUDED.name,
     location = EXCLUDED.location;
