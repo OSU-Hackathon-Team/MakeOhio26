@@ -25,6 +25,28 @@ const AdminPanel = ({ boards, onFlyTo, onUpdate }) => {
         setLoading(false);
     };
 
+    const handleUseMyLocation = (boardId) => {
+        if (!navigator.geolocation) {
+            alert("Geolocation is not supported by your browser");
+            return;
+        }
+
+        setLoading(true);
+        navigator.geolocation.getCurrentPosition(
+            async (position) => {
+                const { latitude, longitude } = position.coords;
+                await onUpdate(boardId, latitude, longitude);
+                setLoading(false);
+            },
+            (error) => {
+                console.error("Error getting location:", error);
+                alert("Unable to retrieve your location");
+                setLoading(false);
+            },
+            { enableHighAccuracy: true }
+        );
+    };
+
     return (
         <div className={`absolute top-6 right-6 z-20 transition-all duration-300 ${isOpen ? 'w-80' : 'w-12'}`}>
             <button
@@ -71,6 +93,13 @@ const AdminPanel = ({ boards, onFlyTo, onUpdate }) => {
                                             {board.name}
                                             <svg className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
                                         </label>
+                                        <button
+                                            onClick={() => handleUseMyLocation(board.id)}
+                                            className="p-1.5 bg-neutral-800 hover:bg-red-500/20 text-neutral-500 hover:text-red-500 rounded-lg transition-all"
+                                            title="Set to My Location"
+                                        >
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                        </button>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <div className="space-y-1">
