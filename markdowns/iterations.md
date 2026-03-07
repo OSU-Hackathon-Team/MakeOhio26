@@ -15,5 +15,11 @@
 - [ ] **Test:** Manually edit a value in the Supabase Dashboard and watch the building change color in the app.
 
 ## Level 4: The Ingestion API
-- [ ] Create a Supabase Edge Function or use the PostgREST API so the Arduino can send logs.
-- [ ] Implement the "Deduplication" logic: Only count a `device_hash` once per 5-minute window per building.
+- [x] Create a Supabase PostgREST API flow for Arduino logs.
+- [x] **New Architecture**: Use PostGIS `calculate_triangulation()` trigger for automatic occupancy updates.
+- [ ] Implement the "Deduplication" logic: Use `packet_id` (MAC + Seq) for backend deduplication.
+
+## Level 5: High-Precision Triangulation
+- [/] Populate `buildings.geom` with PostGIS polygons.
+- [ ] Deploy at least 3 ESP32 nodes.
+- [ ] Verify `ST_Contains` logic matches real-world building footprints.

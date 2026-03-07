@@ -28,6 +28,13 @@ The Arduino/ESP32 boards should send an HTTP POST request to the Supabase REST A
 - **`board_id`**: Identifier for the board (e.g., `board_north`, `board_south`, `board_east`).
 - **`device_hash`**: The hashed MAC address for privacy.
 
+## 📐 PostGIS Triangulation Engine
+The backend now uses a spatial trigger (`calculate_triangulation`) to determine which building a device is in.
+1. **Report Ingestion**: Packet reports are stored in `packet_reports`.
+2. **Triangulation**: Every new report triggers a check for other reports with the same `packet_id`.
+3. **Centroid Intersection**: If 3+ boards see a packet, a centroid point is calculated.
+4. **Occupancy Update**: If that point falls inside a `building.geom`, that building's count increments.
+
 ## Privacy & Accuracy Logic (Arduino-side recommendation)
 As per project requirements:
 1. **Randomization Check**: If the second character of the MAC is `2, 6, A, or E`, it is a randomized MAC.

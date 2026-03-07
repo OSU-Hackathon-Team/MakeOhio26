@@ -94,10 +94,25 @@ EXECUTE FUNCTION calculate_triangulation();
 ALTER TABLE buildings REPLICA IDENTITY FULL;
 ALTER TABLE triangulated_devices REPLICA IDENTITY FULL;
 
--- SEED DATA: Boards (Example coordinates)
+-- Function to update board location via RPC
+CREATE OR REPLACE FUNCTION public.update_board_location(board_id TEXT, lat DOUBLE PRECISION, lon DOUBLE PRECISION)
+RETURNS void 
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+    UPDATE public.boards
+    SET location = ST_SetSRID(ST_MakePoint(lon, lat), 4326) -- PostGIS uses (X, Y) which is (Lon, Lat)
+    WHERE id = board_id;
+END;
+$$;
+
+-- SEED DATA: Boards (Example coordinates surrounding Scott House)
 INSERT INTO boards (id, name, location)
 VALUES 
-    ('board_north', 'North Node', ST_SetSRID(ST_MakePoint(-83.0125, 40.0050), 4326)),
-    ('board_south', 'South Node', ST_SetSRID(ST_MakePoint(-83.0125, 40.0040), 4326)),
-    ('board_east', 'East Node', ST_SetSRID(ST_MakePoint(-83.0120, 40.0045), 4326))
-ON CONFLICT (id) DO NOTHING;
+    ('board_north', 'North Node (Scott)', ST_SetSRID(ST_MakePoint(-83.0131, 40.0050), 4326)),
+    ('board_south', 'South Node (Scott)', ST_SetSRID(ST_MakePoint(-83.0131, 40.0042), 4326)),
+    ('board_east', 'East Node (Scott)', ST_SetSRID(ST_MakePoint(-83.0125, 40.0046), 4326))
+ON CONFLICT (id) DO UPDATE SET 
+    name = EXCLUDED.name,
+    location = EXCLUDED.location;

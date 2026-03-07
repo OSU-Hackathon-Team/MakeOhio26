@@ -1,10 +1,14 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import DeckGL from '@deck.gl/react'
 import { Map } from 'react-map-gl/maplibre'
-import { GeoJsonLayer } from '@deck.gl/layers'
+import { GeoJsonLayer, ScatterplotLayer } from '@deck.gl/layers'
 import 'maplibre-gl/dist/maplibre-gl.css'
 import buildingsData from '../data/buildings.json'
 import { supabase } from '../lib/supabase'
+import AdminPanel from './AdminPanel'
+
+// OSU North Campus Coordinates
+import { LinearInterpolator } from '@deck.gl/core'
 
 // OSU North Campus Coordinates
 const INITIAL_VIEW_STATE = {
@@ -21,81 +25,124 @@ const MapComponent = () => {
     const [viewState, setViewState] = useState(INITIAL_VIEW_STATE)
     const [apiKeyError, setApiKeyError] = useState(false)
     const [buildings, setBuildings] = useState(buildingsData)
+    const [boards, setBoards] = useState([])
+    const [draggedBoardId, setDraggedBoardId] = useState(null)
+    const [clickTarget, setClickTarget] = useState(null) // { x, y, lng, lat }
 
     // Helper to get color based on density
     const getColor = (count, capacity) => {
         const ratio = count / capacity
-        if (ratio < 0.2) return [34, 197, 94] // green-500
-        if (ratio < 0.5) return [234, 179, 8] // yellow-500
-        if (ratio < 0.8) return [249, 115, 22] // orange-500
-        return [239, 68, 68] // red-500
+        if (ratio < 0.2) return [34, 197, 94]
+        if (ratio < 0.5) return [234, 179, 8]
+        if (ratio < 0.8) return [249, 115, 22]
+        return [239, 68, 68]
+    }
+
+    const handleRightClick = (info) => {
+        if (info.coordinate) {
+            // Prevent the browser context menu
+            if (info.nativeEvent) info.nativeEvent.preventDefault();
+            setClickTarget({
+                x: info.x,
+                y: info.y,
+                lng: info.coordinate[0],
+                lat: info.coordinate[1]
+            });
+        }
+        return false;
+    };
+
+    const teleportBoard = async (boardId) => {
+        if (!clickTarget) return;
+        setBoards(prev => prev.map(b => b.id === boardId ? {
+            ...b,
+            location: { ...b.location, coordinates: [clickTarget.lng, clickTarget.lat] }
+        } : b));
+        await updateBoardCoords(boardId, clickTarget.lat, clickTarget.lng);
+        setClickTarget(null);
+    };
+
+    const flyTo = (lng, lat) => {
+        setViewState(prev => ({
+            ...prev,
+            longitude: lng,
+            latitude: lat,
+            zoom: 18.5,
+            pitch: 45,
+            transitionDuration: 1000,
+            transitionInterpolator: new LinearInterpolator()
+        }))
+    }
+
+    const updateBoardCoords = async (id, lat, lon) => {
+        const { error: rpcError } = await supabase.rpc('update_board_location', {
+            board_id: id,
+            lat: parseFloat(lat),
+            lon: parseFloat(lon)
+        })
+
+        // Fallback: If RPC 404s (function not found), try direct update
+        if (rpcError && (rpcError.code === 'PGRST202' || rpcError.message?.includes('404'))) {
+            console.warn('RPC not found, falling back to direct update');
+            const { error: updateError } = await supabase
+                .from('boards')
+                .update({
+                    location: `SRID=4326;POINT(${lon} ${lat})`
+                })
+                .eq('id', id);
+            if (updateError) console.error('Update fallback failed:', updateError);
+        } else if (rpcError) {
+            console.error('Error updating board:', rpcError);
+        }
     }
 
     // Initial Fetch & Real-time Subscription
     useEffect(() => {
-        const fetchInitialCounts = async () => {
-            const { data, error } = await supabase
-                .from('buildings')
-                .select('*')
-
-            if (data && !error) {
+        const fetchData = async () => {
+            const { data: bData } = await supabase.from('buildings').select('*')
+            if (bData) {
                 const updatedFeatures = buildingsData.features.map(feature => {
-                    const building = data.find(b => b.id === feature.properties.id)
-                    if (building) {
-                        return {
-                            ...feature,
-                            properties: {
-                                ...feature.properties,
-                                current_count: building.current_count,
-                                capacity: building.capacity || feature.properties.capacity,
-                                color: getColor(building.current_count, building.capacity || feature.properties.capacity)
-                            }
-                        }
-                    }
+                    const building = bData.find(b => b.id === feature.properties.id)
                     return {
                         ...feature,
                         properties: {
                             ...feature.properties,
-                            current_count: 0,
-                            color: getColor(0, feature.properties.capacity || 100)
+                            current_count: building?.current_count || 0,
+                            capacity: building?.capacity || feature.properties.capacity,
+                            color: getColor(building?.current_count || 0, building?.capacity || feature.properties.capacity || 100)
                         }
                     }
                 })
                 setBuildings({ type: 'FeatureCollection', features: updatedFeatures })
             }
+
+            const { data: brdData } = await supabase.from('boards').select('*')
+            if (brdData) setBoards(brdData)
         }
 
-        fetchInitialCounts()
+        fetchData()
 
-        // Real-time Subscription
-        const channel = supabase
-            .channel('building_updates')
-            .on(
-                'postgres_changes',
-                { event: 'UPDATE', schema: 'public', table: 'buildings' },
-                payload => {
-                    setBuildings(prev => {
-                        const newFeatures = prev.features.map(f => {
-                            if (f.properties.id === payload.new.id) {
-                                return {
-                                    ...f,
-                                    properties: {
-                                        ...f.properties,
-                                        current_count: payload.new.current_count,
-                                        color: getColor(payload.new.current_count, payload.new.capacity || f.properties.capacity)
-                                    }
-                                }
-                            }
-                            return f
-                        })
-                        return { ...prev, features: newFeatures }
-                    })
+        const bldChannel = supabase.channel('building_updates')
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'buildings' }, payload => {
+                setBuildings(prev => ({
+                    ...prev,
+                    features: prev.features.map(f => f.properties.id === payload.new.id ? {
+                        ...f,
+                        properties: { ...f.properties, current_count: payload.new.current_count, color: getColor(payload.new.current_count, payload.new.capacity || f.properties.capacity) }
+                    } : f)
+                }))
+            }).subscribe()
+
+        const brdChannel = supabase.channel('board_updates')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'boards' }, payload => {
+                if (payload.eventType === 'UPDATE') {
+                    setBoards(prev => prev.map(b => b.id === payload.new.id ? payload.new : b))
                 }
-            )
-            .subscribe()
+            }).subscribe()
 
         return () => {
-            supabase.removeChannel(channel)
+            supabase.removeChannel(bldChannel)
+            supabase.removeChannel(brdChannel)
         }
     }, [])
 
@@ -107,39 +154,127 @@ const MapComponent = () => {
         ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${mapTilerKey}`
         : null
 
-    const layers = useMemo(() => [
-        new GeoJsonLayer({
-            id: 'building-extrusion',
-            data: buildings,
-            pickable: true,
-            extruded: true,
-            getFillColor: d => [...(d.properties.color || [150, 150, 150]), 180],
-            getElevation: d => d.properties.height || 20,
-            transitions: {
-                getFillColor: 600,
-                getElevation: 600
-            }
-        })
-    ], [buildings])
+    const layers = useMemo(() => {
+        const activeLayers = [
+            new GeoJsonLayer({
+                id: 'building-extrusion',
+                data: buildings,
+                pickable: true,
+                extruded: true,
+                getFillColor: d => [...(d.properties.color || [150, 150, 150]), 180],
+                getElevation: d => d.properties.height || 20,
+                transitions: { getFillColor: 600, getElevation: 600 }
+            })
+        ];
 
-    const onViewStateChange = ({ viewState }) => {
-        setViewState(viewState)
-    }
+        if (boards.length > 0) {
+            activeLayers.push(
+                new ScatterplotLayer({
+                    id: 'board-locations',
+                    data: boards,
+                    getPosition: d => {
+                        if (d.location && d.location.coordinates) {
+                            return d.location.coordinates;
+                        }
+                        return [0, 0];
+                    },
+                    getFillColor: [239, 68, 68],
+                    getRadius: draggedBoardId ? 12 : 8,
+                    pickable: true,
+                    opacity: 0.9,
+                    filled: true,
+                    stroked: true,
+                    getLineWidth: 2,
+                    getLineColor: [255, 255, 255],
+                    updateTriggers: { getRadius: [draggedBoardId] }
+                })
+            );
+        }
+
+        return activeLayers;
+    }, [buildings, boards, draggedBoardId])
+
+    const handleDragStart = (info) => {
+        if (info.object && info.layer.id === 'board-locations') {
+            setDraggedBoardId(info.object.id);
+            return false; // Prevent map panning
+        }
+    };
+
+    const handleDrag = (info) => {
+        if (draggedBoardId && info.coordinate) {
+            const [lng, lat] = info.coordinate;
+            setBoards(prev => prev.map(b => b.id === draggedBoardId ? {
+                ...b,
+                location: { ...b.location, coordinates: [lng, lat] }
+            } : b));
+        }
+    };
+
+    const handleDragEnd = (info) => {
+        if (draggedBoardId && info.coordinate) {
+            const [lng, lat] = info.coordinate;
+            updateBoardCoords(draggedBoardId, lat, lng);
+            setDraggedBoardId(null);
+        }
+    };
 
     return (
         <div className="w-full h-full relative bg-neutral-950">
             <DeckGL
-                initialViewState={viewState}
-                onViewStateChange={onViewStateChange}
-                controller={true}
+                key="main-deck-gl"
+                viewState={viewState}
+                onViewStateChange={({ viewState }) => setViewState(viewState)}
+                controller={draggedBoardId ? false : true}
                 layers={layers}
-                getTooltip={({ object }) => object && `Building: ${object.properties.name || 'Unknown'}\nCount: ${object.properties.current_count || 0}`}
+                onDragStart={handleDragStart}
+                onDrag={handleDrag}
+                onDragEnd={handleDragEnd}
+                onContextMenu={handleRightClick}
+                getTooltip={({ object }) => {
+                    if (!object) return null;
+                    if (object.properties) return `Building: ${object.properties.name}\nCount: ${object.properties.current_count}`;
+                    return `Board: ${object.name}\n(Drag to move)`;
+                }}
             >
                 <Map
                     mapStyle={styleUrl}
                     onError={() => setApiKeyError(true)}
                 />
+
+                {/* Teleport Selection Menu */}
+                {clickTarget && (
+                    <div
+                        className="absolute z-50 bg-neutral-900/95 backdrop-blur-md border border-neutral-700 rounded-xl p-3 shadow-2xl animate-in fade-in zoom-in-95"
+                        style={{ left: clickTarget.x, top: clickTarget.y }}
+                    >
+                        <p className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest mb-2 px-1">Move Node To Here:</p>
+                        <div className="flex flex-col gap-1">
+                            {boards.map(board => (
+                                <button
+                                    key={board.id}
+                                    onClick={() => teleportBoard(board.id)}
+                                    className="text-xs text-white hover:bg-red-500/20 hover:text-red-400 px-3 py-1.5 rounded-lg text-left transition-all flex items-center gap-2 group"
+                                >
+                                    <div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_4px_rgba(239,68,68,0.5)] group-hover:scale-125 transition-transform"></div>
+                                    {board.name}
+                                </button>
+                            ))}
+                            <button
+                                onClick={() => setClickTarget(null)}
+                                className="text-[10px] text-neutral-500 hover:text-white px-3 py-1 mt-1 border-t border-neutral-800 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                )}
             </DeckGL>
+            <AdminPanel
+                boards={boards}
+                onFlyTo={flyTo}
+                onUpdate={updateBoardCoords}
+            />
 
             {(!hasValidKey || apiKeyError) && (
                 <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/80 backdrop-blur-sm p-6 text-center">
