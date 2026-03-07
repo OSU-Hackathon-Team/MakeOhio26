@@ -3,22 +3,23 @@
 The Arduino should send an HTTP POST request to the Supabase REST API to log detected devices.
 
 ## Endpoint
-`https://[YOUR_PROJECT_REF].supabase.co/rest/v1/device_logs`
-
-## Headers
-- `apikey`: [YOUR_ANON_KEY]
-- `Authorization`: Bearer [YOUR_ANON_KEY]
-- `Content-Type`: application/json
-- `Prefer`: return=representation
+`https://[YOUR_PROJECT_REF].supabase.co/rest/v1/packet_reports`
 
 ## JSON Payload
 ```json
 {
-  "building_id": "scott_house",
+  "packet_id": "pkt_hash_12345", 
+  "board_id": "board_north",
   "device_hash": "a1b2c3d4e5f6...",
+  "arrival_time_us": 1710000000000,
   "rssi": -65
 }
 ```
+
+### Key Fields for Triangulation
+- **`packet_id`**: This must be **identical** for the same physical packet seen by different boards. Use a hash of the packet payload or the MAC + Sequence Number.
+- **`arrival_time_us`**: High-precision timestamp in microseconds from the ESP32.
+- **`board_id`**: Identifier for the board (e.g., `board_north`, `board_south`, `board_east`).
 
 ## Privacy & Accuracy Logic (Arduino-side recommendation)
 As per project requirements:

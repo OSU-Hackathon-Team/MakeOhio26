@@ -1,71 +1,103 @@
--- Create Buildings Table
+-- Enable PostGIS for spatial queries
+CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- 1. Buildings Table (Updated with Polygons)
 CREATE TABLE IF NOT EXISTS buildings (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     capacity INTEGER DEFAULT 100,
     current_count INTEGER DEFAULT 0,
+    geom GEOMETRY(Polygon, 4326), -- PostGIS geometry for spatial intersections
     last_updated TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create Device Logs Table
-CREATE TABLE IF NOT EXISTS device_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    building_id TEXT REFERENCES buildings(id),
-    device_hash TEXT NOT NULL,
+-- 2. Monitoring Boards Table
+CREATE TABLE IF NOT EXISTS boards (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    location GEOMETRY(Point, 4326) NOT NULL -- Fixed coordinates of the ESP32
+);
+
+-- 3. High-Precision Packet Reports (Ingestion Table)
+-- Boards send data here as fast as they can.
+CREATE TABLE IF NOT EXISTS packet_reports (
+    id BIGSERIAL PRIMARY KEY,
+    packet_id TEXT NOT NULL,       -- Shared ID for the same physical packet across boards
+    board_id TEXT REFERENCES boards(id),
+    device_hash TEXT NOT NULL,     -- Anonymized MAC
+    arrival_time_us BIGINT NOT NULL, -- Microsecond timestamp from the board
     rssi INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- Create index for faster occupancy calculation
-CREATE INDEX IF NOT EXISTS idx_device_logs_building_time ON device_logs (building_id, created_at);
+-- Index to quickly find reports for the same packet within a time window
+CREATE INDEX IF NOT EXISTS idx_packet_reports_composite ON packet_reports (packet_id, created_at);
 
--- Function to update building occupancy
--- Counts unique device hashes in the last 5 minutes for a building
-CREATE OR REPLACE FUNCTION update_occupancy_count()
+-- 4. Triangulated Device Locations
+-- This stores the result of the triangulation math.
+CREATE TABLE IF NOT EXISTS triangulated_devices (
+    device_hash TEXT PRIMARY KEY,
+    location GEOMETRY(Point, 4326),
+    last_seen TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 5. FUNCTION: Perform Triangulation (Weighted Approximation for Hackathon)
+-- Real TDOA usually requires more complex solvers, but we can do a weighted
+-- average of board locations based on RSSI or Time for the demo.
+CREATE OR REPLACE FUNCTION calculate_triangulation()
 RETURNS TRIGGER AS $$
+DECLARE
+    report_count INTEGER;
+    avg_geom GEOMETRY;
 BEGIN
-    UPDATE buildings
-    SET 
-        current_count = (
-            SELECT COUNT(DISTINCT device_hash)
-            FROM device_logs
-            WHERE building_id = NEW.building_id
-              AND created_at > (NOW() - INTERVAL '5 minutes')
-        ),
-        last_updated = NOW()
-    WHERE id = NEW.building_id;
+    -- Check if we have at least 3 reports for this packet in the last 2 seconds
+    SELECT COUNT(*), ST_Centroid(ST_Collect(b.location))
+    INTO report_count, avg_geom
+    FROM packet_reports pr
+    JOIN boards b ON pr.board_id = b.id
+    WHERE pr.packet_id = NEW.packet_id
+      AND pr.created_at > (NOW() - INTERVAL '2 seconds');
+
+    IF report_count >= 3 THEN
+        -- Insert or Update the device location
+        INSERT INTO triangulated_devices (device_hash, location, last_seen)
+        VALUES (NEW.device_hash, avg_geom, NOW())
+        ON CONFLICT (device_hash) DO UPDATE
+        SET location = EXCLUDED.location, last_seen = NOW();
+
+        -- Update occupancy for the building that contains this point
+        -- This is the "Magic" that ties triangulation to your 3D buildings!
+        UPDATE buildings
+        SET 
+            current_count = (
+                SELECT COUNT(DISTINCT device_hash)
+                FROM triangulated_devices
+                WHERE ST_Contains(buildings.geom, location)
+                  AND last_seen > (NOW() - INTERVAL '5 minutes')
+            ),
+            last_updated = NOW()
+        WHERE ST_Contains(geom, avg_geom);
+    END IF;
+
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Trigger to update occupancy on every new log insert
-DROP TRIGGER IF EXISTS trg_update_occupancy ON device_logs;
-CREATE TRIGGER trg_update_occupancy
-AFTER INSERT ON device_logs
+-- Trigger to run on every incoming report
+DROP TRIGGER IF EXISTS trg_packet_triangulation ON packet_reports;
+CREATE TRIGGER trg_packet_triangulation
+AFTER INSERT ON packet_reports
 FOR EACH ROW
-EXECUTE FUNCTION update_occupancy_count();
+EXECUTE FUNCTION calculate_triangulation();
 
--- Enable Realtime for buildings table
+-- Realtime Settings
 ALTER TABLE buildings REPLICA IDENTITY FULL;
--- Note: You must also enable the "Realtime" publication in the Supabase Dashboard:
--- Database -> Publications -> supabase_realtime -> Add 'buildings' table.
+ALTER TABLE triangulated_devices REPLICA IDENTITY FULL;
 
--- Seed some initial buildings if not present
-INSERT INTO buildings (id, name, capacity)
+-- SEED DATA: Boards (Example coordinates)
+INSERT INTO boards (id, name, location)
 VALUES 
-    ('scott_house', 'Scott House', 200),
-    ('drackett_tower', 'Drackett Tower', 600),
-    ('taylor_tower', 'Taylor Tower', 600),
-    ('jones_tower', 'Jones Tower', 450),
-    ('knowlton_hall', 'Knowlton Hall', 300),
-    ('thompson_library', 'Thompson Library', 1000),
-    ('blackburn_house', 'Blackburn House', 350),
-    ('nosker_house', 'Nosker House', 400),
-    ('torres_house', 'Torres House', 350),
-    ('raney_house', 'Raney House', 350),
-    ('busch_house', 'Busch House', 350),
-    ('bowen_house', 'Bowen House', 350),
-    ('bolz_hall', 'Bolz Hall', 250),
-    ('hitchcock_hall', 'Hitchcock Hall', 400),
-    ('caldwell_lab', 'Caldwell Lab', 300)
+    ('board_north', 'North Node', ST_SetSRID(ST_MakePoint(-83.0125, 40.0050), 4326)),
+    ('board_south', 'South Node', ST_SetSRID(ST_MakePoint(-83.0125, 40.0040), 4326)),
+    ('board_east', 'East Node', ST_SetSRID(ST_MakePoint(-83.0120, 40.0045), 4326))
 ON CONFLICT (id) DO NOTHING;
