@@ -10,7 +10,8 @@ Build a 3D visualization dashboard that maps real-time device density across OSU
 
 ## 3. Tech Stack
 * **Framework:** React (Vite)
-* **3D Engine:** Mapbox GL JS (v3+)
+* **3D Engine:** Deck.gl (for high-performance 3D layers)
+* **Base Map:** MapLibre GL JS (via react-map-gl)
 * **Styling:** Tailwind CSS
 * **Communication:** WebSockets (Socket.io) or Polling for "Live" updates.
 
@@ -22,8 +23,8 @@ Build a 3D visualization dashboard that maps real-time device density across OSU
 ## 5. Functional Requirements for Antigravity
 
 ### A. The "Device Heat" Layer
-* Implement a MapLibre `fill-extrusion` layer.
-* **Logic:** The `fill-extrusion-color` should be a "data-driven property."
+* Implement a Deck.gl `GeoJsonLayer` for 3D building extrusions.
+* **Logic:** The `getFillColor` and `getElevation` should be driven by real-time device density.
 * **Mapping:** * `0-5 devices`: Green (Empty/Quiet)
     * `6-20 devices`: Yellow (Moderate)
     * `21-50 devices`: Orange (Busy)
@@ -34,7 +35,7 @@ Build a 3D visualization dashboard that maps real-time device density across OSU
     ```json
     { "building_id": "scott_house", "device_count": 42, "last_updated": "14:02:01" }
     ```
-* Implement a `useEffect` that updates the MapLibre source data whenever a new device count is received.
+* Implement a `useEffect` that updates the Deck.gl layer data whenever a new device count is received.
 
 ### C. Live Dashboard UI
 * **Header:** Real-time counter of "Total Devices Detected across Campus."
@@ -44,7 +45,7 @@ Build a 3D visualization dashboard that maps real-time device density across OSU
     * Privacy Note: "Data anonymized via MAC hashing."
 
 ## 6. Development Steps
-1.  **Map Initialization:** Set up the MapLibre instance within a React `useRef`.
+1.  **Map Initialization:** Set up the DeckGL and Map components within `Map.jsx`.
 2.  **Building Filter:** Isolate OSU-specific buildings using their `name` or `osm_id` properties.
 3.  **Data State:** Create a React state `buildingData` that acts as the "Source of Truth" for the map colors.
 4.  **Extrusion Pulse:** (Bonus) If a building hits 100% capacity, animate the `fill-extrusion-height` to pulse slightly.

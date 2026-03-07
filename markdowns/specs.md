@@ -2,10 +2,10 @@
 
 ## 1. Objective
 A 3D dashboard mapping real-time device density across OSU buildings using Arduino sniffers. 
-**Backend Strategy:** Supabase (PostgreSQL + Real-time) to handle device logs and push updates to the React/Mapbox frontend.
+**Backend Strategy:** Supabase (PostgreSQL + Real-time) to handle device logs and push updates to the React/Deck.gl frontend.
 
 ## 2. Tech Stack
-* **Frontend:** React (Vite), MapLibre GL JS, Tailwind CSS.
+* **Frontend:** React (Vite), Deck.gl + MapLibre GL JS, Tailwind CSS.
 * **Database/Backend:** Supabase (Auth, Database, Real-time).
 * **Hardware:** ESP32/Arduino (HTTP POST to Supabase Edge Functions or REST API).
 
@@ -25,4 +25,4 @@ A 3D dashboard mapping real-time device density across OSU buildings using Ardui
 
 ## 4. Frontend-DB Interaction
 * **Initial Load:** Fetch all building counts from the `buildings` table.
-* **Real-time:** Subscribe to `buildings` table changes using `supabase.channel()`. When a row updates, trigger a MapLibre layer re-render.
+* **Real-time:** Subscribe to `buildings` table changes using `supabase.channel()`. When a row updates, trigger a Deck.gl layer re-render.

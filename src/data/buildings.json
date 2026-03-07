@@ -1,0 +1,545 @@
+{
+    "type": "FeatureCollection",
+    "features": [
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "scott_house",
+                "name": "Scott House",
+                "height": 21,
+                "capacity": 200
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.01360000000001,
+                            40.0048
+                        ],
+                        [
+                            -83.0126,
+                            40.0048
+                        ],
+                        [
+                            -83.0126,
+                            40.0044
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0044
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0048
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "drackett_tower",
+                "name": "Drackett Tower",
+                "height": 36,
+                "capacity": 600
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.01360000000001,
+                            40.0057
+                        ],
+                        [
+                            -83.0126,
+                            40.0057
+                        ],
+                        [
+                            -83.0126,
+                            40.0053
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0053
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0057
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "taylor_tower",
+                "name": "Taylor Tower",
+                "height": 36,
+                "capacity": 600
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0126,
+                            40.0057
+                        ],
+                        [
+                            -83.0116,
+                            40.0057
+                        ],
+                        [
+                            -83.0116,
+                            40.0053
+                        ],
+                        [
+                            -83.0126,
+                            40.0053
+                        ],
+                        [
+                            -83.0126,
+                            40.0057
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "jones_tower",
+                "name": "Jones Tower",
+                "height": 39,
+                "capacity": 450
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.01190000000001,
+                            40.0051
+                        ],
+                        [
+                            -83.0109,
+                            40.0051
+                        ],
+                        [
+                            -83.0109,
+                            40.0047
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0047
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0051
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "blackburn_house",
+                "name": "Blackburn House",
+                "height": 24,
+                "capacity": 350
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.01360000000001,
+                            40.0042
+                        ],
+                        [
+                            -83.0126,
+                            40.0042
+                        ],
+                        [
+                            -83.0126,
+                            40.0038
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0038
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0042
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "nosker_house",
+                "name": "Nosker House",
+                "height": 18,
+                "capacity": 400
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0129,
+                            40.0041
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0041
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0037
+                        ],
+                        [
+                            -83.0129,
+                            40.0037
+                        ],
+                        [
+                            -83.0129,
+                            40.0041
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "torres_house",
+                "name": "Torres House",
+                "height": 24,
+                "capacity": 350
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0122,
+                            40.0044
+                        ],
+                        [
+                            -83.0112,
+                            40.0044
+                        ],
+                        [
+                            -83.0112,
+                            40.004
+                        ],
+                        [
+                            -83.0122,
+                            40.004
+                        ],
+                        [
+                            -83.0122,
+                            40.0044
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "raney_house",
+                "name": "Raney House",
+                "height": 21,
+                "capacity": 350
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.01190000000001,
+                            40.0034
+                        ],
+                        [
+                            -83.0109,
+                            40.0034
+                        ],
+                        [
+                            -83.0109,
+                            40.003
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.003
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0034
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "busch_house",
+                "name": "Busch House",
+                "height": 21,
+                "capacity": 350
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.01360000000001,
+                            40.0037
+                        ],
+                        [
+                            -83.0126,
+                            40.0037
+                        ],
+                        [
+                            -83.0126,
+                            40.0033
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0033
+                        ],
+                        [
+                            -83.01360000000001,
+                            40.0037
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "bowen_house",
+                "name": "Bowen House",
+                "height": 21,
+                "capacity": 350
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0129,
+                            40.0033
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0033
+                        ],
+                        [
+                            -83.01190000000001,
+                            40.0029
+                        ],
+                        [
+                            -83.0129,
+                            40.0029
+                        ],
+                        [
+                            -83.0129,
+                            40.0033
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "knowlton_hall",
+                "name": "Knowlton Hall",
+                "height": 18,
+                "capacity": 300
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.016,
+                            40.0019
+                        ],
+                        [
+                            -83.015,
+                            40.0019
+                        ],
+                        [
+                            -83.015,
+                            40.0015
+                        ],
+                        [
+                            -83.016,
+                            40.0015
+                        ],
+                        [
+                            -83.016,
+                            40.0019
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "bolz_hall",
+                "name": "Bolz Hall",
+                "height": 15,
+                "capacity": 250
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0142,
+                            40.0025
+                        ],
+                        [
+                            -83.01320000000001,
+                            40.0025
+                        ],
+                        [
+                            -83.01320000000001,
+                            40.0021
+                        ],
+                        [
+                            -83.0142,
+                            40.0021
+                        ],
+                        [
+                            -83.0142,
+                            40.0025
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "hitchcock_hall",
+                "name": "Hitchcock Hall",
+                "height": 15,
+                "capacity": 400
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0158,
+                            40.003901025008204
+                        ],
+                        [
+                            -83.0148,
+                            40.003901025008204
+                        ],
+                        [
+                            -83.0148,
+                            40.0035
+                        ],
+                        [
+                            -83.0158,
+                            40.0035
+                        ],
+                        [
+                            -83.0158,
+                            40.003901025008204
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "caldwell_lab",
+                "name": "Caldwell Lab",
+                "height": 15,
+                "capacity": 300
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0151,
+                            40.0026
+                        ],
+                        [
+                            -83.0141,
+                            40.0026
+                        ],
+                        [
+                            -83.0141,
+                            40.0022
+                        ],
+                        [
+                            -83.0151,
+                            40.0022
+                        ],
+                        [
+                            -83.0151,
+                            40.0026
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "thompson_library",
+                "name": "Thompson Library",
+                "height": 33,
+                "capacity": 1000
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0159,
+                            39.9994
+                        ],
+                        [
+                            -83.01490000000001,
+                            39.9994
+                        ],
+                        [
+                            -83.01490000000001,
+                            39.999
+                        ],
+                        [
+                            -83.0159,
+                            39.999
+                        ],
+                        [
+                            -83.0159,
+                            39.9994
+                        ]
+                    ]
+                ]
+            }
+        }
+    ]
+}

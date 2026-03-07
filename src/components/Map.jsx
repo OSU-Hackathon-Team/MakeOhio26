@@ -1,103 +1,147 @@
-import React, { useRef, useEffect, useState } from 'react'
-import maplibregl from 'maplibre-gl'
+import React, { useState, useMemo, useEffect } from 'react'
+import DeckGL from '@deck.gl/react'
+import { Map } from 'react-map-gl/maplibre'
+import { GeoJsonLayer } from '@deck.gl/layers'
 import 'maplibre-gl/dist/maplibre-gl.css'
+import buildingsData from '../data/buildings.json'
+import { supabase } from '../lib/supabase'
 
-const Map = () => {
-    const mapContainer = useRef(null)
-    const map = useRef(null)
-    const [lng, setLng] = useState(-83.0125)
-    const [lat, setLat] = useState(40.0)
-    const [zoom] = useState(15.5)
-    const [pitch] = useState(50)
-    const [bearing] = useState(-20)
+// OSU North Campus Coordinates
+const INITIAL_VIEW_STATE = {
+    longitude: -83.0135,
+    latitude: 40.0040,
+    zoom: 15.0,
+    pitch: 50,
+    bearing: -20,
+    maxZoom: 20,
+    minZoom: 10
+}
+
+const MapComponent = () => {
+    const [viewState, setViewState] = useState(INITIAL_VIEW_STATE)
     const [apiKeyError, setApiKeyError] = useState(false)
+    const [buildings, setBuildings] = useState(buildingsData)
 
+    // Helper to get color based on density
+    const getColor = (count, capacity) => {
+        const ratio = count / capacity
+        if (ratio < 0.2) return [34, 197, 94] // green-500
+        if (ratio < 0.5) return [234, 179, 8] // yellow-500
+        if (ratio < 0.8) return [249, 115, 22] // orange-500
+        return [239, 68, 68] // red-500
+    }
+
+    // Initial Fetch & Real-time Subscription
     useEffect(() => {
-        if (map.current) return // Initialize map only once
+        const fetchInitialCounts = async () => {
+            const { data, error } = await supabase
+                .from('buildings')
+                .select('*')
 
-        // Get API key from env
-        const mapTilerKey = import.meta.env.VITE_MAPTILER_API_KEY
-
-        if (!mapTilerKey || mapTilerKey === 'your_maptiler_key_here' || mapTilerKey === 'get_your_free_key_at_maptiler') {
-            console.error('MapTiler API Key is missing or invalid.')
-            setApiKeyError(true)
-            return
+            if (data && !error) {
+                const updatedFeatures = buildingsData.features.map(feature => {
+                    const building = data.find(b => b.id === feature.properties.id)
+                    if (building) {
+                        return {
+                            ...feature,
+                            properties: {
+                                ...feature.properties,
+                                current_count: building.current_count,
+                                capacity: building.capacity || feature.properties.capacity,
+                                color: getColor(building.current_count, building.capacity || feature.properties.capacity)
+                            }
+                        }
+                    }
+                    return {
+                        ...feature,
+                        properties: {
+                            ...feature.properties,
+                            current_count: 0,
+                            color: getColor(0, feature.properties.capacity || 100)
+                        }
+                    }
+                })
+                setBuildings({ type: 'FeatureCollection', features: updatedFeatures })
+            }
         }
 
-        const styleUrl = `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${mapTilerKey}`
+        fetchInitialCounts()
 
-        map.current = new maplibregl.Map({
-            container: mapContainer.current,
-            style: styleUrl,
-            center: [lng, lat],
-            zoom: zoom,
-            pitch: pitch,
-            bearing: bearing,
-            antialias: true
-        })
-
-        map.current.on('load', () => {
-            console.log('Map loaded successfully')
-            // Add 3D buildings layer
-            map.current.addLayer({
-                'id': '3d-buildings',
-                'source': 'openmaptiles',
-                'source-layer': 'building',
-                'type': 'fill-extrusion',
-                'minzoom': 14,
-                'paint': {
-                    'fill-extrusion-color': '#333333',
-                    'fill-extrusion-height': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        14,
-                        0,
-                        14.05,
-                        ['get', 'render_height']
-                    ],
-                    'fill-extrusion-base': [
-                        'interpolate',
-                        ['linear'],
-                        ['zoom'],
-                        14,
-                        0,
-                        14.05,
-                        ['get', 'render_min_height']
-                    ],
-                    'fill-extrusion-opacity': 0.8
+        // Real-time Subscription
+        const channel = supabase
+            .channel('building_updates')
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'buildings' },
+                payload => {
+                    setBuildings(prev => {
+                        const newFeatures = prev.features.map(f => {
+                            if (f.properties.id === payload.new.id) {
+                                return {
+                                    ...f,
+                                    properties: {
+                                        ...f.properties,
+                                        current_count: payload.new.current_count,
+                                        color: getColor(payload.new.current_count, payload.new.capacity || f.properties.capacity)
+                                    }
+                                }
+                            }
+                            return f
+                        })
+                        return { ...prev, features: newFeatures }
+                    })
                 }
-            })
-
-            map.current.addSource('building-data', {
-                'type': 'geojson',
-                'data': {
-                    'type': 'FeatureCollection',
-                    'features': []
-                }
-            })
-        })
-
-        map.current.on('error', (e) => {
-            console.error('MapLibre error:', e)
-            if (e.error?.status === 403 || e.error?.status === 401) {
-                setApiKeyError(true)
-            }
-        })
+            )
+            .subscribe()
 
         return () => {
-            if (map.current) {
-                map.current.remove()
-                map.current = null
-            }
+            supabase.removeChannel(channel)
         }
     }, [])
 
+    // Get API key from env
+    const mapTilerKey = import.meta.env.VITE_MAPTILER_API_KEY
+    const hasValidKey = mapTilerKey && mapTilerKey !== 'your_maptiler_key_here' && mapTilerKey !== 'get_your_free_key_at_maptiler'
+
+    const styleUrl = hasValidKey
+        ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${mapTilerKey}`
+        : null
+
+    const layers = useMemo(() => [
+        new GeoJsonLayer({
+            id: 'building-extrusion',
+            data: buildings,
+            pickable: true,
+            extruded: true,
+            getFillColor: d => [...(d.properties.color || [150, 150, 150]), 180],
+            getElevation: d => d.properties.height || 20,
+            transitions: {
+                getFillColor: 600,
+                getElevation: 600
+            }
+        })
+    ], [buildings])
+
+    const onViewStateChange = ({ viewState }) => {
+        setViewState(viewState)
+    }
+
     return (
         <div className="w-full h-full relative bg-neutral-950">
-            <div ref={mapContainer} className="absolute inset-0 w-full h-full" />
+            <DeckGL
+                initialViewState={viewState}
+                onViewStateChange={onViewStateChange}
+                controller={true}
+                layers={layers}
+                getTooltip={({ object }) => object && `Building: ${object.properties.name || 'Unknown'}\nCount: ${object.properties.current_count || 0}`}
+            >
+                <Map
+                    mapStyle={styleUrl}
+                    onError={() => setApiKeyError(true)}
+                />
+            </DeckGL>
 
-            {apiKeyError && (
+            {(!hasValidKey || apiKeyError) && (
                 <div className="absolute inset-0 flex items-center justify-center z-50 bg-black/80 backdrop-blur-sm p-6 text-center">
                     <div className="max-w-md bg-neutral-900 border border-red-500/50 rounded-2xl p-8 shadow-2xl">
                         <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -121,9 +165,9 @@ const Map = () => {
                 </div>
             )}
 
-            {/* Legend */}
-            {!apiKeyError && (
-                <div className="absolute bottom-10 left-6 z-10 bg-neutral-900/80 backdrop-blur-md p-4 rounded-xl border border-neutral-800 shadow-xl">
+            {/* Legend - Only show if no error */}
+            {!apiKeyError && hasValidKey && (
+                <div className="absolute bottom-10 left-6 z-10 bg-neutral-900/80 backdrop-blur-md p-4 rounded-xl border border-neutral-800 shadow-xl pointer-events-none">
                     <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3">Density Legend</h3>
                     <div className="space-y-2">
                         <div className="flex items-center gap-3">
@@ -149,4 +193,4 @@ const Map = () => {
     )
 }
 
-export default Map
+export default MapComponent
