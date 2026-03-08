@@ -10,7 +10,7 @@ import AdminPanel from './AdminPanel'
 import { LinearInterpolator } from '@deck.gl/core'
 import BuildingEditorPanel from './BuildingEditorPanel'
 import BuildingInfoPanel from './BuildingInfoPanel'
-import { trilaterate, rssiToDistance } from '../utils/trilateration'
+import { trilaterate, rssiToDistance, calculateCircleIntersection } from '../utils/trilateration'
 import { isPointInPolygon, getPolygonCenter } from '../utils/geoUtils'
 import { getHardcodedOccupancy } from '../utils/occupancyUtils'
 
@@ -36,6 +36,8 @@ const MapComponent = () => {
     const [selectedBuildingId, setSelectedBuildingId] = useState(null)
     const [editingVertices, setEditingVertices] = useState([])
     const [draggedVertexIndex, setDraggedVertexIndex] = useState(null)
+    const [isManualTriangulation, setIsManualTriangulation] = useState(false)
+    const [manualPoints, setManualPoints] = useState([])
     const [orbitControllerEnabled, setOrbitControllerEnabled] = useState(true)
     const [viewedBuilding, setViewedBuilding] = useState(null)
     const [packetReports, setPacketReports] = useState([])
@@ -202,6 +204,21 @@ const MapComponent = () => {
     const handleCancelEdit = () => {
         setSelectedBuildingId(null);
         setEditingVertices([]);
+    };
+
+    const handleMapClick = (info) => {
+        if (isManualTriangulation && info.coordinate) {
+            const [lng, lat] = info.coordinate;
+            const newPoint = {
+                id: `manual-${Date.now()}`,
+                position: [lng, lat],
+                type: 'trilateral',
+                alpha: 255,
+                color: [0, 255, 255],
+                lastSeenUs: Date.now() * 1000
+            };
+            setManualPoints(prev => [...prev, newPoint]);
+        }
     };
 
     // Initial Fetch & Real-time Subscription
@@ -436,6 +453,7 @@ const MapComponent = () => {
             }
 
             if (signals.length >= 3) {
+                // High Precision: 3+ node trilateration
                 const triPos = trilaterate(
                     signals[0].pos, signals[1].pos, signals[2].pos,
                     signals[0].dist / 111320,
@@ -446,12 +464,16 @@ const MapComponent = () => {
                     id: deviceId,
                     position: triPos,
                     type: 'trilateral',
-                    alpha: fadeAlpha
+                    alpha: fadeAlpha,
+                    color: [0, 255, 255], // Cyan for high precision
+                    lastSeenUs: latestPacketTime * 1000 // Convert back to Us or just use the raw us
                 });
             }
         });
-        return locations;
-    }, [packetReports, boards, showTriangulation, timelapseTime, deviceFilter]);
+
+        // Merge manual points
+        return [...locations, ...manualPoints];
+    }, [packetReports, boards, showTriangulation, timelapseTime, deviceFilter, manualPoints]);
 
     // Persist triangulated positions to Supabase
     useEffect(() => {
@@ -468,7 +490,7 @@ const MapComponent = () => {
                 .map(d => ({
                     device_hash: d.origId || d.id,
                     location: `POINT(${d.position[0]} ${d.position[1]})`,
-                    last_seen: new Date().toISOString()
+                    last_seen: new Date(d.lastSeenUs / 1000).toISOString()
                 }));
 
             const { error } = await supabase
@@ -548,7 +570,7 @@ const MapComponent = () => {
                     data: deviceLocations,
                     getPosition: d => d.position,
                     getFillColor: d => [0, 255, 255, (viewedBuilding ? (d.alpha || 200) : 0)], // Fade based on viewedBuilding & trailing time
-                    getRadius: 8,
+                    getRadius: 3,
                     pickable: true,
                     opacity: 1,
                     stroked: true,
@@ -708,6 +730,7 @@ const MapComponent = () => {
                 onDragStart={handleDragStart}
                 onDrag={handleDrag}
                 onDragEnd={handleDragEnd}
+                onClick={handleMapClick}
                 onContextMenu={handleRightClick}
                 getTooltip={({ object }) => {
                     if (!object) return null;
@@ -752,6 +775,8 @@ const MapComponent = () => {
                 boards={boards}
                 onFlyTo={flyTo}
                 onUpdate={updateBoardCoords}
+                isManualTriangulation={isManualTriangulation}
+                setIsManualTriangulation={setIsManualTriangulation}
             >
                 <BuildingEditorPanel
                     isEditingBuildings={isEditingBuildings}

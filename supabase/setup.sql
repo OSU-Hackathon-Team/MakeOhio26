@@ -61,9 +61,9 @@ BEGIN
     IF report_count >= 3 THEN
         -- Insert or Update the device location
         INSERT INTO triangulated_devices (device_hash, location, last_seen)
-        VALUES (NEW.device_hash, avg_geom, NOW())
+        VALUES (NEW.device_hash, avg_geom, to_timestamp(NEW.arrival_time_us / 1000000.0))
         ON CONFLICT (device_hash) DO UPDATE
-        SET location = EXCLUDED.location, last_seen = NOW();
+        SET location = EXCLUDED.location, last_seen = EXCLUDED.last_seen;
 
         -- Update occupancy for the building that contains this point
         -- This is the "Magic" that ties triangulation to your 3D buildings!

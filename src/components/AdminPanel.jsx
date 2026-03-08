@@ -5,6 +5,8 @@ const AdminPanel = ({
     boards,
     onFlyTo,
     onUpdate,
+    isManualTriangulation,
+    setIsManualTriangulation,
     children
 }) => {
     const [isOpen, setIsOpen] = useState(false);
@@ -67,8 +69,27 @@ const AdminPanel = ({
             </button>
 
             {isOpen && (
-                <div className="flex flex-col gap-4 mt-4">
+                <div className="flex flex-col gap-4 mt-4 max-h-[85vh] overflow-y-auto pr-2 custom-scrollbar">
                     <div className="bg-neutral-900/90 backdrop-blur-xl border border-neutral-800 rounded-2xl p-6 shadow-2xl animate-in fade-in slide-in-from-top-4 overflow-hidden">
+
+                        {/* Manual Triangulation Toggle */}
+                        <div className="mb-6 p-4 bg-red-500/5 border border-red-500/10 rounded-xl">
+                            <div className="flex items-center justify-between mb-2">
+                                <h3 className="text-[10px] font-bold text-red-500 uppercase tracking-widest">Live Testing</h3>
+                                <div
+                                    className={`w-8 h-4 rounded-full transition-colors cursor-pointer relative ${isManualTriangulation ? 'bg-red-500' : 'bg-neutral-700'}`}
+                                    onClick={() => setIsManualTriangulation(!isManualTriangulation)}
+                                >
+                                    <div className={`absolute top-0.5 w-3 h-3 bg-white rounded-full transition-all ${isManualTriangulation ? 'left-4.5' : 'left-0.5'}`}></div>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-neutral-400 leading-relaxed">
+                                {isManualTriangulation
+                                    ? "Click anywhere on the map to place custom triangulation points."
+                                    : "Enable to manually simulate device locations on the map."}
+                            </p>
+                        </div>
+
                         <div className="flex items-center justify-between mb-4">
                             <h2 className="text-sm font-bold text-white uppercase tracking-widest">Board Calibration</h2>
                             <button
@@ -80,7 +101,7 @@ const AdminPanel = ({
                             </button>
                         </div>
 
-                        <div className="space-y-6 relative max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+                        <div className="space-y-6 relative max-h-[40vh] overflow-y-auto pr-2 custom-scrollbar">
                             {loading && (
                                 <div className="absolute inset-x-0 top-0 h-1 bg-red-500/20 overflow-hidden">
                                     <div className="w-full h-full bg-red-500 animate-progress origin-left"></div>
