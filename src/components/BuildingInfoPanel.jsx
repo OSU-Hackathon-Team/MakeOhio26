@@ -59,7 +59,9 @@ const BuildingInfoPanel = ({
     onTimelapseChange,
     isPlaying,
     onTogglePlay,
-    timeRange
+    timeRange,
+    deviceFilter,
+    onDeviceFilterChange
 }) => {
     if (!building) return null;
 
@@ -249,6 +251,33 @@ const BuildingInfoPanel = ({
                         </div>
                     </div>
 
+                    {/* MAC Address Filter */}
+                    <div className="pt-4 border-t border-neutral-800">
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Device Filter</h3>
+                            {deviceFilter && (
+                                <button
+                                    onClick={() => onDeviceFilterChange('')}
+                                    className="text-[9px] text-red-400 hover:text-red-300 font-bold uppercase"
+                                >
+                                    Clear
+                                </button>
+                            )}
+                        </div>
+                        <div className="relative group">
+                            <input
+                                type="text"
+                                placeholder="Search MAC Address..."
+                                value={deviceFilter}
+                                onChange={(e) => onDeviceFilterChange(e.target.value.replace(/:/g, ''))}
+                                className="w-full bg-neutral-800 border border-neutral-700 rounded-lg py-2 px-9 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-red-500/50 focus:ring-4 focus:ring-red-500/10 transition-all duration-300"
+                            />
+                            <svg className="w-3.5 h-3.5 absolute left-3 top-2.5 text-neutral-500 group-focus-within:text-red-500 transition-colors duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                            </svg>
+                        </div>
+                    </div>
+
                     {/* Timelapse Controls */}
                     <div className="pt-4 border-t border-neutral-800">
                         <div className="flex justify-between items-center mb-4">
@@ -260,7 +289,7 @@ const BuildingInfoPanel = ({
                                 <button
                                     onClick={onTogglePlay}
                                     disabled={!hasData}
-                                    className={`p-1.5 rounded-lg transition-all ${isPlaying ? 'bg-red-500 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'} disabled:opacity-30`}
+                                    className={`p-1.5 rounded-lg transition-all duration-300 transform active:scale-95 ${isPlaying ? 'bg-red-500 text-white shadow-lg shadow-red-500/50 animate-pulse' : 'bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700'} disabled:opacity-30`}
                                 >
                                     {isPlaying ? (
                                         <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>

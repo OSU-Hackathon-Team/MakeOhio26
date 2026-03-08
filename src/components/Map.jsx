@@ -43,6 +43,7 @@ const MapComponent = () => {
     const [timelapseTime, setTimelapseTime] = useState(null)
     const [isPlaying, setIsPlaying] = useState(false)
     const [timeRange, setTimeRange] = useState({ min: null, max: null })
+    const [deviceFilter, setDeviceFilter] = useState('')
 
     // Helper to get color based on density
     const getColor = (count, capacity) => {
@@ -306,6 +307,59 @@ const MapComponent = () => {
         }
     }, [])
 
+    // Debounced Search for Specific Devices
+    useEffect(() => {
+        const performSearch = async () => {
+            if (!deviceFilter) {
+                // If filter is cleared, reload the recent packets
+                console.log('[Triangulation] Filter cleared, fetching latest packets...');
+                const { data } = await supabase
+                    .from('packet_reports')
+                    .select('*')
+                    .order('arrival_time_us', { ascending: false })
+                    .limit(1000);
+                if (data) {
+                    setPacketReports(data);
+                    const times = data.map(r => parseInt(r.arrival_time_us) / 1000);
+                    const min = Math.min(...times);
+                    const max = Math.max(...times);
+                    setTimeRange({ min, max });
+                    setTimelapseTime(max);
+                }
+                return;
+            }
+
+            console.log(`[Triangulation] Searching Supabase for packet_id matching: "${deviceFilter}"...`);
+            const { data, error } = await supabase
+                .from('packet_reports')
+                .select('*')
+                .ilike('packet_id', `%${deviceFilter}%`)
+                .order('arrival_time_us', { ascending: false })
+                .limit(2000);
+
+            if (error) {
+                console.error('[Triangulation] Search error:', error);
+            } else if (data) {
+                console.log(`[Triangulation] Found ${data.length} entries for filter.`);
+                setPacketReports(data);
+
+                if (data.length > 0) {
+                    const times = data.map(r => parseInt(r.arrival_time_us) / 1000);
+                    const min = Math.min(...times);
+                    const max = Math.max(...times);
+                    setTimeRange({ min, max });
+                    setTimelapseTime(max); // Set to latest found entry
+                } else {
+                    setTimeRange({ min: null, max: null });
+                    setTimelapseTime(null);
+                }
+            }
+        };
+
+        const timeoutId = setTimeout(performSearch, 500);
+        return () => clearTimeout(timeoutId);
+    }, [deviceFilter]);
+
     // Timelapse Ticker - Drives the historical playback
     useEffect(() => {
         let interval;
@@ -339,10 +393,15 @@ const MapComponent = () => {
         const windowSize = 60 * 1000; // 1 minute trailing window for fading
         const startTime = timelapseTime - windowSize;
 
-        // Filter packets within the trailing 1-minute window
+        // Filter packets within the trailing 1-minute window and apply substring match
         const filteredPackets = packetReports.filter(p => {
             const pTime = parseInt(p.arrival_time_us) / 1000;
-            return pTime >= startTime && pTime <= timelapseTime;
+            const timeMatch = pTime >= startTime && pTime <= timelapseTime;
+
+            // Local substring match for snappier UI while debouncing
+            const filterMatch = !deviceFilter || (p.packet_id && p.packet_id.toLowerCase().includes(deviceFilter.toLowerCase()));
+
+            return timeMatch && filterMatch;
         });
 
         if (filteredPackets.length === 0) return [];
@@ -350,6 +409,7 @@ const MapComponent = () => {
         const locations = [];
         const packetsByDevice = filteredPackets.reduce((acc, p) => {
             const devId = p.device_hash || p.device_id;
+
             if (!acc[devId]) acc[devId] = [];
             acc[devId].push(p);
             return acc;
@@ -391,7 +451,7 @@ const MapComponent = () => {
             }
         });
         return locations;
-    }, [packetReports, boards, showTriangulation, timelapseTime]);
+    }, [packetReports, boards, showTriangulation, timelapseTime, deviceFilter]);
 
     // Persist triangulated positions to Supabase
     useEffect(() => {
@@ -713,6 +773,8 @@ const MapComponent = () => {
                 isPlaying={isPlaying}
                 onTogglePlay={() => setIsPlaying(!isPlaying)}
                 timeRange={timeRange}
+                deviceFilter={deviceFilter}
+                onDeviceFilterChange={setDeviceFilter}
             />
 
             {
