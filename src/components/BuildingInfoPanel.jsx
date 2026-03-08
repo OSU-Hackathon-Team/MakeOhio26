@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { getHardcodedOccupancy } from '../utils/occupancyUtils';
 
 // Simple session-level cache to keep data consistent until refresh
 const trafficCache = new Map();
@@ -58,9 +59,11 @@ const BuildingInfoPanel = ({ building, onClose }) => {
     const buildingCapacity = parseInt(capacity) || 100;
     const buildingId = building.id || building.properties.id || building.properties.name || 'unknown';
 
-    // Use live data for everything EXCEPT the "Traditions" dining halls
-    const isLiveBuilding = !buildingId.toLowerCase().includes('traditions');
-    const liveCount = buildingId === 'traditions_scott' ? 465 : (buildingId === 'traditions_kennedy' ? 20 : (parseInt(building.properties.current_count) || 0));
+    // Use live data ONLY for Fontana
+    const isLiveBuilding = buildingId.toLowerCase().includes('fontana');
+    const liveCount = isLiveBuilding
+        ? (parseInt(building.properties.current_count) || 0)
+        : getHardcodedOccupancy(buildingId, buildingCapacity);
 
     const trafficData = useMemo(() => {
         let baseData = getSimulatedTraffic(buildingId, buildingCapacity);
@@ -84,8 +87,7 @@ const BuildingInfoPanel = ({ building, onClose }) => {
     const currentDataPoint = trafficData.find(d => d.hour === currentHour) ||
         (currentHour < 8 ? trafficData[0] : trafficData[trafficData.length - 1]);
 
-    const isHardcoded = buildingId === 'traditions_scott' || buildingId === 'traditions_kennedy';
-    const displayCount = (isLiveBuilding || isHardcoded) ? liveCount : currentDataPoint.count;
+    const displayCount = isLiveBuilding ? liveCount : (getHardcodedOccupancy(buildingId, buildingCapacity) || currentDataPoint.count);
     const occupancyPercentage = Math.min(100, Math.round((displayCount / buildingCapacity) * 100)) || 0;
 
     return (

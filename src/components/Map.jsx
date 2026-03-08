@@ -10,8 +10,9 @@ import AdminPanel from './AdminPanel'
 import { LinearInterpolator } from '@deck.gl/core'
 import BuildingEditorPanel from './BuildingEditorPanel'
 import BuildingInfoPanel from './BuildingInfoPanel'
-import { trilaterate, rssiToDistance, calculateCircleIntersection } from '../utils/trilateration'
+import { trilaterate, rssiToDistance } from '../utils/trilateration'
 import { isPointInPolygon } from '../utils/geoUtils'
+import { getHardcodedOccupancy } from '../utils/occupancyUtils'
 
 // OSU North Campus Coordinates
 const INITIAL_VIEW_STATE = {
@@ -239,15 +240,18 @@ const MapComponent = () => {
             const { data: brdData } = await supabase.from('boards').select('*')
             if (brdData) setBoards(brdData)
 
-            // Try to load local packet reports for debugging
-            try {
-                const response = await fetch('/src/data/packet_reports.json');
-                if (response.ok) {
-                    const data = await response.json();
-                    setPacketReports(data);
-                }
-            } catch (e) {
-                console.warn('Could not load packet_reports.json, run the fetch script first.');
+            // Fetch live packet reports for triangulation
+            console.log('[Triangulation] Fetching latest packet reports from Supabase...');
+            const { data: reports, error: reportsError } = await supabase
+                .from('packet_reports')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1000);
+
+            if (reportsError) {
+                console.error('[Triangulation] Error fetching reports:', reportsError);
+            } else if (reports) {
+                setPacketReports(reports);
             }
         }
 
@@ -285,75 +289,105 @@ const MapComponent = () => {
         ? `https://api.maptiler.com/maps/dataviz-dark/style.json?key=${mapTilerKey}`
         : null
 
+    // Memoized device location calculation
+    const deviceLocations = useMemo(() => {
+        if (!showTriangulation || packetReports.length === 0 || boards.length < 3) return [];
+
+        const locations = [];
+        const packetsByDevice = packetReports.reduce((acc, p) => {
+            const devId = p.device_hash || p.device_id;
+            if (!acc[devId]) acc[devId] = [];
+            acc[devId].push(p);
+            return acc;
+        }, {});
+
+        Object.entries(packetsByDevice).forEach(([deviceId, packets]) => {
+            const signals = [];
+            const usedBoardIds = new Set();
+            const sortedPackets = packets.sort((a, b) => b.rssi - a.rssi);
+
+            for (const p of sortedPackets) {
+                const board = boards.find(b => b.id === p.board_id);
+                if (board && board.location && !usedBoardIds.has(p.board_id)) {
+                    signals.push({
+                        pos: board.location.coordinates,
+                        dist: rssiToDistance(p.rssi)
+                    });
+                    usedBoardIds.add(p.board_id);
+                }
+            }
+
+            if (signals.length >= 3) {
+                const triPos = trilaterate(
+                    signals[0].pos, signals[1].pos, signals[2].pos,
+                    signals[0].dist / 111320,
+                    signals[1].dist / 111320,
+                    signals[2].dist / 111320
+                );
+                locations.push({ id: deviceId, position: triPos, type: 'trilateral' });
+            }
+        });
+        return locations;
+    }, [packetReports, boards, showTriangulation]);
+
+    // Persist triangulated positions to Supabase
+    useEffect(() => {
+        if (deviceLocations.length === 0) return;
+
+        const persistLocations = async () => {
+            console.log(`[Triangulation] Syncing ${deviceLocations.length} positions to Supabase...`);
+
+            // Prepare upsert payload
+            // We only upsert the original device IDs (skipping candidate suffixes for simplicity in the DB)
+            // or we could structure the table to handle candidates. For now, let's keep it simple.
+            const upsertData = deviceLocations
+                .filter(d => !d.isCandidate || d.id.endsWith('_0')) // Only pick one candidate if multiple exist for a 2-node match
+                .map(d => ({
+                    device_hash: d.origId || d.id,
+                    location: `POINT(${d.position[0]} ${d.position[1]})`,
+                    last_seen: new Date().toISOString()
+                }));
+
+            const { error } = await supabase
+                .from('triangulated_devices')
+                .upsert(upsertData, { onConflict: 'device_hash' });
+
+            if (error) console.error('[Triangulation] Error persisting locations:', error);
+            else console.log('[Triangulation] Successfully persisted locations.');
+        };
+
+        const timeout = setTimeout(persistLocations, 2000); // Debounce to allow page to settle
+        return () => clearTimeout(timeout);
+    }, [deviceLocations]);
+
     const layers = useMemo(() => {
         const activeLayers = [];
 
-        // Apply hardcoded occupancy for Scott and Kennedy
+        // Apply global hardcoded occupancy for all buildings except Fontana
         const buildingsWithHardcode = {
             ...buildings,
             features: buildings.features.map(f => {
                 const id = f.properties.id;
-                if (id === 'traditions_scott') {
-                    return { ...f, properties: { ...f.properties, current_count: 465, color: getColor(465, f.properties.capacity || 100) } };
-                }
-                if (id === 'traditions_kennedy') {
-                    return { ...f, properties: { ...f.properties, current_count: 20, color: getColor(20, f.properties.capacity || 100) } };
-                }
-                return f;
+                const capacity = f.properties.capacity || 100;
+
+                // Keep Fontana live
+                if (id.toLowerCase().includes('fontana')) return f;
+
+                const hardCount = getHardcodedOccupancy(id, capacity);
+                return {
+                    ...f,
+                    properties: {
+                        ...f.properties,
+                        current_count: hardCount,
+                        color: getColor(hardCount, capacity)
+                    }
+                };
             })
         };
 
         let currentBuildings = buildingsWithHardcode;
 
-        if (showTriangulation && packetReports.length > 0 && boards.length >= 2) {
-            // Group packets by device_hash (from JSON) and calculate position
-            const deviceLocations = [];
-            const packetsByDevice = packetReports.reduce((acc, p) => {
-                const devId = p.device_hash || p.device_id;
-                if (!acc[devId]) acc[devId] = [];
-                acc[devId].push(p);
-                return acc;
-            }, {});
-
-            Object.entries(packetsByDevice).forEach(([deviceId, packets]) => {
-                const signals = [];
-                const usedBoardIds = new Set();
-                const sortedPackets = packets.sort((a, b) => b.rssi - a.rssi);
-
-                for (const p of sortedPackets) {
-                    const board = boards.find(b => b.id === p.board_id);
-                    if (board && board.location && !usedBoardIds.has(p.board_id)) {
-                        signals.push({
-                            pos: board.location.coordinates,
-                            dist: rssiToDistance(p.rssi)
-                        });
-                        usedBoardIds.add(p.board_id);
-                    }
-                }
-
-                if (signals.length >= 3) {
-                    // Full Trilateration
-                    const triPos = trilaterate(
-                        signals[0].pos, signals[1].pos, signals[2].pos,
-                        signals[0].dist / 111320,
-                        signals[1].dist / 111320,
-                        signals[2].dist / 111320
-                    );
-                    deviceLocations.push({ id: deviceId, position: triPos, type: 'trilateral' });
-                } else if (signals.length === 2) {
-                    // Two-node intersection (returns 2 points)
-                    const candidates = calculateCircleIntersection(signals);
-                    candidates.forEach((pos, idx) => {
-                        deviceLocations.push({
-                            id: `${deviceId}_${idx}`,
-                            position: pos,
-                            type: 'centroid',
-                            isCandidate: candidates.length > 1
-                        });
-                    });
-                }
-            });
-
+        if (showTriangulation && deviceLocations.length > 0) {
             // Calculate Triangulated Occupancy
             const buildingOccupants = {};
             deviceLocations.forEach(device => {
@@ -369,8 +403,8 @@ const MapComponent = () => {
                 const id = f.properties.id;
                 const triCount = buildingOccupants[id] || 0;
 
-                // Hardcode: Scott and Kennedy always show their specific values
-                if (id === 'traditions_scott' || id === 'traditions_kennedy') return f;
+                // Priority: Keep all buildings hardcoded except Fontana
+                if (!id.toLowerCase().includes('fontana')) return f;
 
                 return {
                     ...f,
@@ -390,16 +424,17 @@ const MapComponent = () => {
                     id: 'triangulated-points',
                     data: deviceLocations,
                     getPosition: d => d.position,
-                    getFillColor: d => d.type === 'trilateral' ? [0, 255, 255] : [255, 255, 0],
+                    getFillColor: [0, 255, 255], // Cyan for all high-confidence points
                     getRadius: 8,
                     pickable: true,
-                    opacity: d => d.isCandidate ? 0.4 : 0.8, // Dim the candidates since we aren't 100% sure which is which
+                    opacity: 0.8,
                     stroked: true,
                     getLineColor: [255, 255, 255],
                     parameters: { depthTest: false }
                 })
             );
         }
+
 
         activeLayers.push(
             new GeoJsonLayer({
