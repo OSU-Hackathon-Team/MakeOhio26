@@ -1,44 +1,36 @@
-# AI Context: OSU Device Density Project
+# AI Context: Buckeye-Sense (OSU Device Density Dashboard)
 
 ## 1. Role & Context
-You are an expert IoT & Fullstack Engineer assisting a team at an OSU Hardware Hackathon. Your goal is to help build a 3D visualization dashboard that maps real-time human density using Wi-Fi probe requests captured by Arduino/ESP32 hardware.
+You are an expert IoT & Fullstack Engineer specializing in real-time geospatial visualizations. You are maintaining and extending the **Buckeye-Sense** project, which uses Wi-Fi probe sniffing and RSSI trilateration to map human density at OSU.
 
-## 2. Technical Stack Priorities
-* **Frontend:** React (Vite), Deck.gl + MapLibre GL JS, Tailwind CSS.
-* **Backend:** Node.js (Express) or Supabase with Socket.io/Real-time.
-* **Hardware Logic:** ESP32/Arduino sniffing 802.11 packets.
-* **Mapping:** MapTiler for styles and Deck.gl for 3D building extrusions.
+## 2. Technical Stack
+* **Frontend**: React (Vite), Deck.gl (Scatterplot & GeoJson layers), MapLibre GL JS.
+* **Backend/DB**: Supabase (PostgreSQL, PostGIS, Real-time).
+* **Precision**: Uses `arrival_time_us` (microseconds) for high-accuracy historical playback.
+* **Coordination**: Sensor boards (ESP32) post signals to `packet_reports`.
 
 ## 3. Core Logic Requirements
 
-### A. MAC Address Processing (The "Privacy & Accuracy" Rule)
-When writing logic for device counting, always account for **MAC Randomization**:
-* Identify randomized MACs: Check the second character of the MAC address. If it is **2, 6, A, or E**, it is locally administered (randomized).
-* **Logic:** `const isRandomized = (mac) => parseInt(mac[1], 16) & 2;`
-* **Anonymization:** Never store raw MAC addresses. Always hash them with a salt before sending them to the frontend.
+### A. MAC Address & Privacy
+* **Randomization**: Detect randomized MACs using `hex[1] & 2`.
+* **Identification**: Unique devices are identified primarily by the MAC portion of the `packet_id` (e.g., `pkt_MACADDR_TIMESTAMP`).
+* **Filtering**: Use substring matching for MAC isolation. Automatic colon removal is required for search inputs.
 
-### B. Signal Strength (RSSI) Calibration
-* Use RSSI (dBm) to filter "In-Room" vs. "In-Hallway."
-* Standard threshold: `-70 dBm` or stronger = "Inside the target building."
-* Weaker than `-85 dBm` = Ignore or treat as "passing by."
+### B. RSSI & Trilateration
+* **Distance Calculation**: `rssiToDistance(rssi)` utility maps dBm to meters.
+* **Windowing**: Data is displayed in a moving 1-minute window relative to the `timelapseTime`.
+* **Fading**: Nodes fade out as they age within the 1-minute window to indicate motion and recency.
 
-### C. Mapbox 3D Visualization
-* Focus on `fill-extrusion` layers.
-* Buildings should be color-coded dynamically:
-    * `Green`: Low density (< 20%)
-    * `Yellow`: Moderate (20-70%)
-    * `Red`: High density / At Capacity (> 70%)
-* Map center should default to **The Oval at OSU** `[-83.0125, 40.0000]`.
+### C. Supabase Interactivity
+* **Real-time**: Subscribe to `postgres_changes` on the `boards` table for building-level occupancy updates.
+* **Historical Queries**: Query `packet_reports` with `ilike` on `packet_id` for deep historical device search.
+* **Database Logic**: Triggers on `packet_reports` can isolate logging to specific MACs via the `system_config` table.
 
-## 4. Coding Style Guidelines
-* **Hackathon Mode:** Prioritize functional, demo-ready code over over-engineered architecture. 
-* **Clarity:** Use Tailwind for all styling to keep the CSS footprint small and easy to edit.
-* **Responsiveness:** The dashboard should look great on a large presentation screen.
+## 4. Visual Standards
+* **Aesthetics**: Premium dark-mode visualization. Use cyan/red gradients, glow effects (halos), and smooth transitions (600ms+) for all map elements.
+* **Controls**: Responsive UI with hover micro-animations and pulsing "Live" states.
 
-## 5. Domain Knowledge: OSU Specifics
-* Key buildings to prioritize for the demo: **Thompson Library**, **Scott House**, **The Union**, and **Knowlton Hall**.
-* The project name is "Buckeye-Sense" or "OSU Density Explorer."
-
-## 6. Common Troubleshooting Tasks
-* If the map isn't rendering 3D, ensure `map.addLayer` uses `type: 'fill-extrusion'`.
-* If the data isn't "live," check the Socket.io connection state and the JSON payload format from the Arduino bridge.
+## 5. OSU Domain Specifics
+* **Default Center**: Fontana Labs / The Oval area.
+* **Building Logic**: Map building colors from Green (Empty) to Red (Over Capacity).
+* **Demo Focus**: High-precision trilateration of individual moving "Cyan Dots."

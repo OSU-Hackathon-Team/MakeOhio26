@@ -22,27 +22,21 @@ Build a 3D visualization dashboard that maps real-time device density across OSU
 
 ## 5. Functional Requirements for Antigravity
 
-### A. The "Device Heat" Layer
-* Implement a Deck.gl `GeoJsonLayer` for 3D building extrusions.
-* **Logic:** The `getFillColor` and `getElevation` should be driven by real-time device density.
-* **Mapping:** * `0-5 devices`: Green (Empty/Quiet)
-    * `6-20 devices`: Yellow (Moderate)
-    * `21-50 devices`: Orange (Busy)
-    * `50+ devices`: Red (At Capacity)
+### A. High-Precision Trilateration Layer
+* Implement a Deck.gl `ScatterplotLayer` for individual devices.
+* **Movement**: Dynamic transitions (600ms) for smooth interpolation between signals.
+* **Glow**: Subtle halo effect behind nodes for premium visibility.
+* **Fade**: nodes older than 60 seconds relative to the current timelapse offset fade to 0 alpha.
 
-### B. Linux/MAC Address Data Processing
-* The frontend needs a handler for incoming JSON payloads from the server:
-    ```json
-    { "building_id": "scott_house", "device_count": 42, "last_updated": "14:02:01" }
-    ```
-* Implement a `useEffect` that updates the Deck.gl layer data whenever a new device count is received.
+### B. Microsecond Timelapse
+* **Precision**: Uses `arrival_time_us` for accurate historical ordering.
+* **Playback**: 1:1 real-time simulation with pause/scrub functionality.
+* **Filtering**: Server-side `packet_id` substring matching with auto-colon-stripping.
 
 ### C. Live Dashboard UI
-* **Header:** Real-time counter of "Total Devices Detected across Campus."
-* **3D Tooltip:** When hovering over a building, show:
-    * Building Name
-    * Current Device Count
-    * Privacy Note: "Data anonymized via MAC hashing."
+* **Side Panel**: Detailed building stats, capacity gauges, and historical playback controls.
+* **Integrated Timeline**: Play/Pause and range slider embedded within the building info view.
+* **3D Tooltip**: Building name, current occupancy, and high-precision device counts.
 
 ## 6. Development Steps
 1.  **Map Initialization:** Set up the DeckGL and Map components within `Map.jsx`.

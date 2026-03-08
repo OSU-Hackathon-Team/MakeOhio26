@@ -9,19 +9,25 @@ A 3D dashboard mapping real-time device density across OSU buildings using Ardui
 * **Database/Backend:** Supabase (Auth, Database, Real-time).
 * **Hardware:** ESP32/Arduino (HTTP POST to Supabase Edge Functions or REST API).
 
-## 3. Supabase Schema (Draft)
+## 3. Final Supabase Schema
 * **Table: `buildings`**
-  - `id` (text, primary key - e.g., 'thompson_library')
+  - `id` (text, primary key)
   - `name` (text)
   - `capacity` (int)
-  - `current_count` (int)
-  - `coordinates` (geometry/point)
-* **Table: `device_logs`**
-  - `id` (uuid)
-  - `building_id` (foreign key)
-  - `device_hash` (text - hashed MAC for privacy)
+  - `occupancy` (int) - Live count
+  - `geom` (geometry/polygon) - PostGIS footprint
+* **Table: `packet_reports`**
+  - `packet_id` (text, primary key) - Format: `pkt_MACADDR_TIMESTAMP`
+  - `board_id` (text)
+  - `device_hash` (text)
   - `rssi` (int)
+  - `arrival_time_us` (bigint) - Microsecond precision
+  - `esp_timestamp_ms` (bigint)
+  - `esp_report_ms` (bigint)
   - `created_at` (timestamp)
+* **Table: `system_config`**
+  - `key` (text, primary key)
+  - `value` (text) - Stores `focused_mac_address`
 
 ## 4. Frontend-DB Interaction
 * **Initial Load:** Fetch all building counts from the `buildings` table.
