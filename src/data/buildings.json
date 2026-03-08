@@ -540,6 +540,78 @@
                     ]
                 ]
             }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "traditions_scott",
+                "name": "Traditions at Scott",
+                "height": 12,
+                "capacity": 500
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0128,
+                            40.0046
+                        ],
+                        [
+                            -83.0123,
+                            40.0046
+                        ],
+                        [
+                            -83.0123,
+                            40.0042
+                        ],
+                        [
+                            -83.0128,
+                            40.0042
+                        ],
+                        [
+                            -83.0128,
+                            40.0046
+                        ]
+                    ]
+                ]
+            }
+        },
+        {
+            "type": "Feature",
+            "properties": {
+                "id": "traditions_kennedy",
+                "name": "Traditions at Kennedy",
+                "height": 10,
+                "capacity": 100
+            },
+            "geometry": {
+                "type": "Polygon",
+                "coordinates": [
+                    [
+                        [
+                            -83.0102,
+                            39.9919
+                        ],
+                        [
+                            -83.0094,
+                            39.9919
+                        ],
+                        [
+                            -83.0094,
+                            39.9915
+                        ],
+                        [
+                            -83.0102,
+                            39.9915
+                        ],
+                        [
+                            -83.0102,
+                            39.9919
+                        ]
+                    ]
+                ]
+            }
         }
     ]
 }
