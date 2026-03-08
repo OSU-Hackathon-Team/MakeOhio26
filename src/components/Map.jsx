@@ -11,7 +11,7 @@ import { LinearInterpolator } from '@deck.gl/core'
 import BuildingEditorPanel from './BuildingEditorPanel'
 import BuildingInfoPanel from './BuildingInfoPanel'
 import { trilaterate, rssiToDistance } from '../utils/trilateration'
-import { isPointInPolygon } from '../utils/geoUtils'
+import { isPointInPolygon, getPolygonCenter } from '../utils/geoUtils'
 import { getHardcodedOccupancy } from '../utils/occupancyUtils'
 
 // OSU North Campus Coordinates
@@ -40,6 +40,9 @@ const MapComponent = () => {
     const [viewedBuilding, setViewedBuilding] = useState(null)
     const [packetReports, setPacketReports] = useState([])
     const [showTriangulation, setShowTriangulation] = useState(true)
+    const [timelapseTime, setTimelapseTime] = useState(null)
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [timeRange, setTimeRange] = useState({ min: null, max: null })
 
     // Helper to get color based on density
     const getColor = (count, capacity) => {
@@ -136,7 +139,22 @@ const MapComponent = () => {
 
     const handleBuildingClick = (info) => {
         if (!isEditingBuildings) {
-            if (info.object) setViewedBuilding(info.object);
+            if (info.object) {
+                setViewedBuilding(info.object);
+
+                // Zoom to building center for a more accurate top-down look
+                const center = getPolygonCenter(info.object.geometry.coordinates);
+                setViewState(prev => ({
+                    ...prev,
+                    longitude: center[0],
+                    latitude: center[1],
+                    zoom: 19.5, // Closer zoom to see cyan dots
+                    pitch: 0,    // Top-down view
+                    bearing: 0,  // North-up
+                    transitionDuration: 1000,
+                    transitionInterpolator: new LinearInterpolator()
+                }));
+            }
             return;
         }
         if (info.object) {
@@ -250,8 +268,15 @@ const MapComponent = () => {
 
             if (reportsError) {
                 console.error('[Triangulation] Error fetching reports:', reportsError);
-            } else if (reports) {
+            } else if (reports && reports.length > 0) {
                 setPacketReports(reports);
+
+                // Calculate time range using arrival_time_us (converted to ms for UI)
+                const times = reports.map(r => parseInt(r.arrival_time_us) / 1000);
+                const min = Math.min(...times);
+                const max = Math.max(...times);
+                setTimeRange({ min, max });
+                if (!timelapseTime) setTimelapseTime(max); // Default to most recent
             }
         }
 
@@ -281,6 +306,24 @@ const MapComponent = () => {
         }
     }, [])
 
+    // Timelapse Ticker - Drives the historical playback
+    useEffect(() => {
+        let interval;
+        if (isPlaying && timelapseTime && timeRange.max) {
+            interval = setInterval(() => {
+                setTimelapseTime(prev => {
+                    const next = prev + 1000; // 1 second real-time = 1 second timelapse
+                    if (next >= timeRange.max) {
+                        setIsPlaying(false);
+                        return timeRange.max;
+                    }
+                    return next;
+                });
+            }, 1000);
+        }
+        return () => clearInterval(interval);
+    }, [isPlaying, timeRange.max]);
+
     // Get API key from env
     const mapTilerKey = import.meta.env.VITE_MAPTILER_API_KEY
     const hasValidKey = mapTilerKey && mapTilerKey !== 'your_maptiler_key_here' && mapTilerKey !== 'get_your_free_key_at_maptiler'
@@ -291,10 +334,21 @@ const MapComponent = () => {
 
     // Memoized device location calculation
     const deviceLocations = useMemo(() => {
-        if (!showTriangulation || packetReports.length === 0 || boards.length < 3) return [];
+        if (!showTriangulation || packetReports.length === 0 || boards.length < 3 || !timelapseTime) return [];
+
+        const windowSize = 60 * 1000; // 1 minute trailing window for fading
+        const startTime = timelapseTime - windowSize;
+
+        // Filter packets within the trailing 1-minute window
+        const filteredPackets = packetReports.filter(p => {
+            const pTime = parseInt(p.arrival_time_us) / 1000;
+            return pTime >= startTime && pTime <= timelapseTime;
+        });
+
+        if (filteredPackets.length === 0) return [];
 
         const locations = [];
-        const packetsByDevice = packetReports.reduce((acc, p) => {
+        const packetsByDevice = filteredPackets.reduce((acc, p) => {
             const devId = p.device_hash || p.device_id;
             if (!acc[devId]) acc[devId] = [];
             acc[devId].push(p);
@@ -305,6 +359,10 @@ const MapComponent = () => {
             const signals = [];
             const usedBoardIds = new Set();
             const sortedPackets = packets.sort((a, b) => b.rssi - a.rssi);
+
+            // Get the latest timestamp for this device in the window for fading
+            const latestPacketTime = Math.max(...packets.map(p => parseInt(p.arrival_time_us) / 1000));
+            const fadeAlpha = Math.max(0, Math.min(255, ((latestPacketTime - startTime) / windowSize) * 200 + 55));
 
             for (const p of sortedPackets) {
                 const board = boards.find(b => b.id === p.board_id);
@@ -324,11 +382,16 @@ const MapComponent = () => {
                     signals[1].dist / 111320,
                     signals[2].dist / 111320
                 );
-                locations.push({ id: deviceId, position: triPos, type: 'trilateral' });
+                locations.push({
+                    id: deviceId,
+                    position: triPos,
+                    type: 'trilateral',
+                    alpha: fadeAlpha
+                });
             }
         });
         return locations;
-    }, [packetReports, boards, showTriangulation]);
+    }, [packetReports, boards, showTriangulation, timelapseTime]);
 
     // Persist triangulated positions to Supabase
     useEffect(() => {
@@ -424,13 +487,21 @@ const MapComponent = () => {
                     id: 'triangulated-points',
                     data: deviceLocations,
                     getPosition: d => d.position,
-                    getFillColor: [0, 255, 255], // Cyan for all high-confidence points
+                    getFillColor: d => [0, 255, 255, (viewedBuilding ? (d.alpha || 200) : 0)], // Fade based on viewedBuilding & trailing time
                     getRadius: 8,
                     pickable: true,
-                    opacity: 0.8,
+                    opacity: 1,
                     stroked: true,
-                    getLineColor: [255, 255, 255],
-                    parameters: { depthTest: false }
+                    getLineColor: d => [255, 255, 255, (viewedBuilding ? (d.alpha || 255) : 0)],
+                    parameters: { depthTest: false },
+                    transitions: {
+                        getFillColor: 1000,
+                        getLineColor: 1000
+                    },
+                    updateTriggers: {
+                        getFillColor: [!!viewedBuilding, timelapseTime],
+                        getLineColor: [!!viewedBuilding, timelapseTime]
+                    }
                 })
             );
         }
@@ -511,7 +582,7 @@ const MapComponent = () => {
         }
 
         return activeLayers;
-    }, [buildings, boards, draggedBoardId, isEditingBuildings, selectedBuildingId, editingVertices, draggedVertexIndex, packetReports, showTriangulation])
+    }, [buildings, boards, draggedBoardId, isEditingBuildings, selectedBuildingId, editingVertices, draggedVertexIndex, packetReports, showTriangulation, viewedBuilding, timelapseTime, isPlaying])
 
     const handleDragStart = (info) => {
         console.log('[Debug] Drag Start Info:', { layerId: info.layer?.id, object: !!info.object, index: info.object?.index });
@@ -637,6 +708,11 @@ const MapComponent = () => {
             <BuildingInfoPanel
                 building={viewedBuilding}
                 onClose={() => setViewedBuilding(null)}
+                timelapseTime={timelapseTime}
+                onTimelapseChange={setTimelapseTime}
+                isPlaying={isPlaying}
+                onTogglePlay={() => setIsPlaying(!isPlaying)}
+                timeRange={timeRange}
             />
 
             {

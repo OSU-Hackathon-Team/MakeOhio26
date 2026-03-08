@@ -24,3 +24,25 @@ export function isPointInPolygon(point, polygon) {
 
     return inside;
 }
+
+/**
+ * Calculates the bounding box center of a polygon
+ * 
+ * @param {Array} polygon - GeoJSON Polygon coordinates [[lng, lat], ...]
+ * @returns {Array} - [longitude, latitude] center
+ */
+export function getPolygonCenter(polygon) {
+    const vs = Array.isArray(polygon[0][0]) ? polygon[0] : polygon;
+    let minX = vs[0][0], maxX = vs[0][0];
+    let minY = vs[0][1], maxY = vs[0][1];
+
+    for (let i = 1; i < vs.length; i++) {
+        const x = vs[i][0], y = vs[i][1];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+    }
+
+    return [(minX + maxX) / 2, (minY + maxY) / 2];
+}

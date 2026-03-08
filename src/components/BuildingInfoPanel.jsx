@@ -52,7 +52,15 @@ const getSimulatedTraffic = (buildingId, capacity) => {
     return data;
 };
 
-const BuildingInfoPanel = ({ building, onClose }) => {
+const BuildingInfoPanel = ({
+    building,
+    onClose,
+    timelapseTime,
+    onTimelapseChange,
+    isPlaying,
+    onTogglePlay,
+    timeRange
+}) => {
     if (!building) return null;
 
     const { capacity } = building.properties;
@@ -89,6 +97,14 @@ const BuildingInfoPanel = ({ building, onClose }) => {
 
     const displayCount = isLiveBuilding ? liveCount : (getHardcodedOccupancy(buildingId, buildingCapacity) || currentDataPoint.count);
     const occupancyPercentage = Math.min(100, Math.round((displayCount / buildingCapacity) * 100)) || 0;
+
+    // Timeline Formatting
+    const formatTime = (ts) => {
+        if (!ts) return '--:--';
+        return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    };
+
+    const hasData = timeRange && timeRange.min && timeRange.max;
 
     return (
         <div className="absolute top-24 right-6 z-10 w-80">
@@ -230,6 +246,47 @@ const BuildingInfoPanel = ({ building, onClose }) => {
                                     </div>
                                 );
                             })}
+                        </div>
+                    </div>
+
+                    {/* Timelapse Controls */}
+                    <div className="pt-4 border-t border-neutral-800">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-wider">Historical Timelapse</h3>
+                            <div className="flex items-center gap-3">
+                                <span className="text-[10px] font-mono bg-red-500/10 text-red-500 px-2 py-0.5 rounded border border-red-500/20">
+                                    {formatTime(timelapseTime)}
+                                </span>
+                                <button
+                                    onClick={onTogglePlay}
+                                    disabled={!hasData}
+                                    className={`p-1.5 rounded-lg transition-all ${isPlaying ? 'bg-red-500 text-white' : 'bg-neutral-800 text-neutral-400 hover:text-white'} disabled:opacity-30`}
+                                >
+                                    {isPlaying ? (
+                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" /></svg>
+                                    ) : (
+                                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-4">
+                            <input
+                                type="range"
+                                min={timeRange?.min || 0}
+                                max={timeRange?.max || 100}
+                                step="1000" // 1 second steps
+                                value={timelapseTime || timeRange?.max || 0}
+                                onChange={(e) => onTimelapseChange(parseInt(e.target.value))}
+                                disabled={!hasData}
+                                className="w-full h-1.5 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-red-500 hover:accent-red-400 transition-all disabled:opacity-30"
+                            />
+                            <div className="flex justify-between items-center text-[9px] text-neutral-500 font-bold uppercase tracking-tight">
+                                <span>{formatTime(timeRange?.min)}</span>
+                                <span className="text-red-500/80">1:1 PLAYBACK</span>
+                                <span>{formatTime(timeRange?.max)}</span>
+                            </div>
                         </div>
                     </div>
                 </div>
